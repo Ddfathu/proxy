@@ -1,23 +1,26 @@
-FROM node:20-alpine
+FROM alpine:latest
 
-# Install depedensi sistem dasar untuk kebutuhan network dan SSL
-RUN apk add --no-cache libc6-compat ca-certificates curl
+# Install Node.js, curl, libc6-compat, dan dependencies
+RUN apk add --no-cache nodejs npm curl ca-certificates libc6-compat
 
-# Tentukan working directory
+# Download & Install GOST Binary Resmi
+RUN curl -L https://github.com/go-gost/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz -o gost.gz && \
+    gunzip gost.gz && \
+    mv gost /usr/local/bin/gost && \
+    chmod +x /usr/local/bin/gost
+
+# Download & Install Cloudflared Binary Resmi
+RUN curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && \
+    chmod +x /usr/local/bin/cloudflared
+
 WORKDIR /app
 
-# Copas package.json dan install dependency terlebih dahulu (biar caching cepat)
+# Copy project files
 COPY package*.json ./
-RUN npm install --production
+RUN npm install --omit=dev
 
-# Copas seluruh kode utama ke dalam container
 COPY . .
 
-# Buat folder sementara untuk operasi runtime jika dibutuhkan
-RUN mkdir -p .tmp
-
-# Expose port bawaan
 EXPOSE 3000 8080
 
-# Jalankan server
 CMD ["npm", "start"]
