@@ -1,0 +1,16 @@
+{
+  "name": "gost-cf-tunnel",
+  "version": "1.0.0",
+  "description": "Gost WebSocket Proxy with Cloudflare Quick Tunnel and Log API",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cloudflared": "^2024.6.0",
+    "gost-bin": "^2.11.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
