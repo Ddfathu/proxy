@@ -5,8 +5,11 @@ RUN apt-get update && apt-get install -y curl wget ca-certificates && \
     chmod +x /usr/local/bin/cloudflared
 
 WORKDIR /app
+
+# Copy file package dulu lalu install dependencies
 COPY package*.json ./
 RUN npm install
+
 COPY . .
 
 ENV PORT=8080
