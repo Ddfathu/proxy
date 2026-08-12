@@ -1,4 +1,5 @@
 const http = require('http');
+const net = require('net');
 const express = require('express');
 const { spawn } = require('child_process');
 
@@ -21,18 +22,21 @@ app.get('/', (req, res) => {
 
 const server = http.createServer(app);
 
-// HTTP CONNECT Handler (Proxy VLESS)
+// HTTP CONNECT Handler (Fix Parsing URL & Socket Pipe)
 server.on('connect', (req, clientSocket, head) => {
-  const { port, hostname } = new URL(`http://${req.url}`);
-  const serverSocket = require('net').connect(port || 80, hostname, () => {
+  // Parsing host & port tanpa 'new URL()' biar gak crash
+  const [hostname, port] = req.url.split(':');
+  const targetPort = parseInt(port) || 80;
+
+  const serverSocket = net.connect(targetPort, hostname, () => {
     clientSocket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
     serverSocket.write(head);
     serverSocket.pipe(clientSocket);
     clientSocket.pipe(serverSocket);
   });
 
-  serverSocket.on('error', () => clientSocket.end());
-  clientSocket.on('error', () => serverSocket.end());
+  serverSocket.on('error', () => clientSocket.destroy());
+  clientSocket.on('error', () => serverSocket.destroy());
 });
 
 server.listen(PORT, () => {
