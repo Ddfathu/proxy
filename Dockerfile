@@ -1,19 +1,18 @@
-FROM alpine:latest
+FROM node:18-slim
 
-# Install Node.js, curl, ca-certificates, dan gost langsung dari repository Alpine
-RUN apk add --no-cache nodejs npm curl ca-certificates libc6-compat gost
-
-# Install Cloudflared Binary Resmi
-RUN curl -L https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -o /usr/local/bin/cloudflared && \
+# Install dependencies & cloudflared
+RUN apt-get update && apt-get install -y curl wget ca-certificates && \
+    wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && \
     chmod +x /usr/local/bin/cloudflared
 
 WORKDIR /app
-
 COPY package*.json ./
-RUN npm install --omit=dev
-
+RUN npm install
 COPY . .
 
-EXPOSE 3000 8080
+# Expose port lokal
+ENV PORT=8080
+EXPOSE 8080
 
-CMD ["npm", "start"]
+# Jalankan HTTP Proxy & Cloudflare Quick Tunnel secara bersamaan
+CMD node index.js & cloudflared tunnel --url http://localhost:8080
