@@ -1,9 +1,11 @@
 {
-  "name": "gost-cf-tunnel",
+  "name": "railway-argo-proxy",
   "version": "1.0.0",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
-    "start": "node server.js"
+    "start": "node index.js"
   },
-  "dependencies": {}
+  "dependencies": {
+    "http-proxy": "^1.18.1"
+  }
 }
