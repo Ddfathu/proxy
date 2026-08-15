@@ -5,86 +5,132 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Active Proxy Live Monitor</title>
     <style>
-        * { box-sizing: border-box; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        body { background-color: #0b0f19; color: #e2e8f0; margin: 0; padding: 20px; }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: #0b0f19; color: #e2e8f0; margin: 0; padding: 15px; }
         .container { max-width: 900px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        h1 { font-size: 22px; color: #38bdf8; margin: 0; }
-        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
-        .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 15px; text-align: center; }
-        .stat-card h3 { margin: 0; font-size: 13px; color: #94a3b8; text-transform: uppercase; }
-        .stat-card .value { font-size: 26px; font-weight: bold; color: #22c55e; margin-top: 8px; }
-        .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        h1 { font-size: 20px; color: #38bdf8; margin: 0; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 15px; }
+        .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; text-align: center; }
+        .stat-card h3 { margin: 0; font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+        .stat-card .value { font-size: 20px; font-weight: bold; color: #22c55e; margin-top: 5px; }
+        
+        .card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 15px; }
         .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-        .badge { background: #0284c7; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        pre { background: #020617; border: 1px solid #1e293b; color: #4ade80; padding: 15px; border-radius: 8px; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
-        .pulse { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); animation: pulse 1.5s infinite; margin-right: 6px; }
-        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
+        
+        /* List Item Log Modern */
+        .log-list { display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; padding-right: 4px; }
+        .log-item { background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; }
+        .log-row-top { display: flex; justify-content: space-between; align-items: center; }
+        .target-host { font-weight: bold; color: #38bdf8; font-size: 14px; word-break: break-all; }
+        .badge-status { background: #065f46; color: #34d399; font-size: 11px; font-weight: bold; padding: 2px 6px; border-radius: 4px; }
+        .log-row-bottom { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: #94a3b8; }
+        .log-row-bottom span b { color: #f1f5f9; }
+
+        .pulse { display: inline-block; width: 8px; height: 8px; background-color: #22c55e; border-radius: 50%; animation: pulse 1.5s infinite; margin-right: 5px; }
+        @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>⚡ PROXY ACTIVE MONITOR</h1>
-            <div class="badge"><span class="pulse"></span>LIVE ENGINE</div>
+            <span style="font-size: 12px; color: #38bdf8;"><span class="pulse"></span>LIVE</span>
         </div>
 
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Socket Terhubung</h3>
-                <div class="value" id="activeConn">0 Socket</div>
+                <h3>Socket Aktif</h3>
+                <div class="value" id="activeConn">0</div>
             </div>
             <div class="stat-card">
-                <h3>Sesi Valid Terlayani</h3>
+                <h3>Sesi Berhasil</h3>
                 <div class="value" style="color: #38bdf8;" id="totalHandled">0</div>
             </div>
             <div class="stat-card">
-                <h3>Status Node</h3>
-                <div class="value" style="color: #a855f7; font-size: 20px; line-height: 38px;">TURBO 100%</div>
+                <h3>Node Engine</h3>
+                <div class="value" style="color: #a855f7; font-size: 16px; line-height: 25px;">TURBO</div>
             </div>
         </div>
 
         <div class="card">
             <div class="card-header">
-                <strong>📡 Traffic Valid & Riwayat Akses Target (SNI):</strong>
-                <small style="color: #94a3b8;">Auto-refresh tiap 1 detik</small>
+                <strong>📡 Riwayat Aktivitas Target (SNI)</strong>
+                <small style="color: #64748b;">Real-time stream</small>
             </div>
-            <pre id="streamLogs">Menunggu traffic koneksi valid...</pre>
+            <div class="log-list" id="logContainer">
+                <div style="text-align: center; color: #64748b; padding: 20px;">Menunggu traffic...</div>
+            </div>
         </div>
     </div>
 
     <script>
+        function formatBytes(bytes) {
+            if (bytes === 0) return '0 B';
+            const k = 1024;
+            const sizes = ['B', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+        }
+
         async function updateDashboard() {
             try {
-                // 1. Fetch & Filter Log Stream
+                // 1. Log Stream
                 const logRes = await fetch("/api/logs");
                 if (logRes.ok) {
                     const logData = await logRes.text();
                     const lines = logData.trim().split("\n").filter(l => l.trim());
                     
-                    // Filter: Buang probe bot port scan yang tidak memiliki target SNI atau bernilai Status 500
-                    const realTraffic = lines.filter(line => {
-                        return !line.includes("Target: -") && !line.includes("Status: 500");
-                    });
+                    const validSessions = lines.filter(line => !line.includes("Target: -") && !line.includes("Status: 500"));
+                    document.getElementById("totalHandled").innerText = validSessions.length;
 
-                    // Tampilkan 30 aktivitas valid terbaru (paling baru di atas)
-                    const recentValid = realTraffic.slice(-30).reverse();
-                    document.getElementById("streamLogs").innerText = recentValid.length > 0 
-                        ? recentValid.join("\n") 
-                        : "Menunggu koneksi valid (Target SNI terdeteksi)...";
+                    const container = document.getElementById("logContainer");
+                    if (validSessions.length === 0) {
+                        container.innerHTML = `<div style="text-align:center;color:#64748b;padding:20px;">Menunggu koneksi valid...</div>`;
+                    } else {
+                        const recent = validSessions.slice(-25).reverse();
+                        container.innerHTML = recent.map(line => {
+                            // Parsing data log Nginx
+                            const targetMatch = line.match(/Target:\s+([^\s]+)/);
+                            const bytesMatch = line.match(/Bytes:\s+\[RX:\s+(\d+)\s+\|\s+TX:\s+(\d+)\]/);
+                            const durMatch = line.match(/Duration:\s+([^\s]+)/);
+                            const timeMatch = line.match(/\[(.*?)\]/);
+                            const statusMatch = line.match(/Status:\s+(\d+)/);
 
-                    document.getElementById("totalHandled").innerText = realTraffic.length;
+                            const target = targetMatch ? targetMatch[1] : "Unknown";
+                            const rx = bytesMatch ? formatBytes(parseInt(bytesMatch[1])) : "0 B";
+                            const tx = bytesMatch ? formatBytes(parseInt(bytesMatch[2])) : "0 B";
+                            const duration = durMatch ? durMatch[1] : "0s";
+                            const time = timeMatch ? timeMatch[1].split(":")[1] + ":" + timeMatch[1].split(":")[2] : "--:--";
+                            const status = statusMatch ? statusMatch[1] : "200";
+
+                            return `
+                                <div class="log-item">
+                                    <div class="log-row-top">
+                                        <span class="target-host">🌐 ${target}</span>
+                                        <span class="badge-status">OK ${status}</span>
+                                    </div>
+                                    <div class="log-row-bottom">
+                                        <span>Download: <b>${tx}</b></span>
+                                        <span>Upload: <b>${rx}</b></span>
+                                        <span>Durasi: <b>${duration}</b></span>
+                                        <span>Waktu: <b>${time}</b></span>
+                                    </div>
+                                </div>
+                            `;
+                        }).join("");
+                    }
                 }
 
-                // 2. Fetch Status Socket Nginx
+                // 2. Active Socket
                 const statusRes = await fetch("/nginx_status");
                 if (statusRes.ok) {
                     const text = await statusRes.text();
                     const activeMatch = text.match(/Active connections:\s+(\d+)/);
                     if (activeMatch) {
-                        // Mengurangi 1 untuk koneksi internal Web UI Dashboard
                         const rawActive = Math.max(0, parseInt(activeMatch[1]) - 1);
-                        document.getElementById("activeConn").innerText = rawActive + " Socket";
+                        document.getElementById("activeConn").innerText = rawActive;
                     }
                 }
             } catch (err) {
