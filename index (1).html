@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>High Performance Proxy Tuner</title>
+    <style>
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
+        body { background-color: #090d16; color: #f1f5f9; margin: 0; padding: 15px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        h1 { font-size: 20px; color: #38bdf8; margin: 0; }
+        
+        .metrics-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
+        .metric-card { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 12px; text-align: center; }
+        .metric-card h4 { margin: 0; font-size: 11px; color: #94a3b8; text-transform: uppercase; }
+        .metric-card .val { font-size: 22px; font-weight: bold; color: #22c55e; margin-top: 4px; }
+
+        .panel { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 18px; margin-bottom: 15px; }
+        .panel h3 { margin-top: 0; font-size: 15px; color: #38bdf8; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        
+        .form-group { margin-bottom: 12px; }
+        label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #cbd5e1; }
+        select, input[type="text"] { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 13px; }
+        
+        .toggle-group { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2d3748; }
+        .toggle-label { font-size: 13px; color: #e2e8f0; }
+        .toggle-label small { display: block; color: #94a3b8; font-size: 11px; }
+
+        .switch { position: relative; display: inline-block; width: 40px; height: 22px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #475569; transition: .2s; border-radius: 22px; }
+        .slider:before { position: absolute; content: ""; height: 16px; width: 16px; left: 3px; bottom: 3px; background-color: white; transition: .2s; border-radius: 50%; }
+        input:checked + .slider { background-color: #0284c7; }
+        input:checked + .slider:before { transform: translateX(18px); }
+
+        .btn-apply { width: 100%; background: #0284c7; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.2s; margin-top: 15px; }
+        .btn-apply:hover { background: #0369a1; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>⚡ PROXY EXPERIMENT TUNER</h1>
+            <span id="saveStatus" style="font-size: 12px; color: #22c55e;">Ready</span>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <h4>Socket Aktif</h4>
+                <div class="val" id="activeSocket">0</div>
+            </div>
+            <div class="metric-card">
+                <h4>Total Handled</h4>
+                <div class="val" style="color: #38bdf8;" id="totalReq">0</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>⚙️ 1. Routing & DNS Tunneling</h3>
+            
+            <div class="form-group">
+                <label>Mode Routing Target</label>
+                <select id="routingMode" onchange="toggleFields()">
+                    <option value="dynamic">Dynamic SNI ($ssl_preread_server_name) - Full Host Support</option>
+                    <option value="static">Static Upstream IP (Direct Fast Handshake)</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="staticIpGroup" style="display: none;">
+                <label>Target Upstream IP (Cloudflare Edge)</label>
+                <input type="text" id="staticIp" value="104.16.123.96">
+            </div>
+
+            <div class="form-group">
+                <label>DNS Engine Type</label>
+                <select id="dnsMode" onchange="toggleFields()">
+                    <option value="doh">DNS over HTTPS (DoH Local Daemon 127.0.0.1:5053)</option>
+                    <option value="standard">Standard UDP/TCP (1.1.1.1 + Google)</option>
+                    <option value="custom">Custom DNS Resolver</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="dohGroup">
+                <label>Penyedia DoH (DNS over HTTPS)</label>
+                <select id="dohProvider">
+                    <option value="cloudflare">Cloudflare (https://1.1.1.1/dns-query)</option>
+                    <option value="google">Google DoH (https://dns.google/dns-query)</option>
+                    <option value="quad9">Quad9 Secure (https://dns.quad9.net/dns-query)</option>
+                </select>
+            </div>
+
+            <div class="form-group" id="customDnsGroup" style="display: none;">
+                <label>Custom DNS Server</label>
+                <input type="text" id="customDns" value="9.9.9.9 149.112.112.112">
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>🚀 2. Low-Latency & TCP Kernel Acceleration</h3>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    TCP Fast Open (TFO)
+                    <small>Kirim data di paket SYN awal (Pangkas 1 RTT Handshake)</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="tcpFastOpen">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    TCP NoDelay (Bypass Nagle)
+                    <small>Kirim paket instan tanpa buffer delay 40ms</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="tcpNodelay">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    Socket Keep-Alive Probe
+                    <small>Cegah ISP memutuskan koneksi saat HP standby</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="socketKeepalive">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    IPv6 Dual-Stack Resolver
+                    <small>Nyalakan hanya jika ISP memiliki rute IPv6 cepat</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="ipv6">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    Real-time Access Logging
+                    <small>Matikan untuk performa maksimal 0% disk wait</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="enableLogging">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group" style="margin-top: 10px;">
+                <label>Proxy Buffer Size</label>
+                <select id="bufferSize">
+                    <option value="64k">64 KB (Low RAM)</option>
+                    <option value="128k">128 KB (Balanced Standard)</option>
+                    <option value="256k">256 KB (Turbo Download / 4K)</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label>Zombie Socket Timeout</label>
+                <select id="proxyTimeout">
+                    <option value="2m">2 Menit (Super Gesit)</option>
+                    <option value="5m">5 Menit (Direkomendasikan)</option>
+                    <option value="30m">30 Menit (Sesi Panjang)</option>
+                </select>
+            </div>
+
+            <button class="btn-apply" onclick="applyConfiguration()">Simpan & Terapkan Pengaturan</button>
+        </div>
+    </div>
+
+    <script>
+        function toggleFields() {
+            const rMode = document.getElementById('routingMode').value;
+            const dMode = document.getElementById('dnsMode').value;
+            document.getElementById('staticIpGroup').style.display = rMode === 'static' ? 'block' : 'none';
+            document.getElementById('dohGroup').style.display = dMode === 'doh' ? 'block' : 'none';
+            document.getElementById('customDnsGroup').style.display = dMode === 'custom' ? 'block' : 'none';
+        }
+
+        async function loadSettings() {
+            const res = await fetch('/api/settings');
+            const data = await res.json();
+            
+            document.getElementById('routingMode').value = data.routingMode;
+            document.getElementById('staticIp').value = data.staticIp;
+            document.getElementById('dnsMode').value = data.dnsMode;
+            document.getElementById('dohProvider').value = data.dohProvider || 'cloudflare';
+            document.getElementById('customDns').value = data.customDns;
+            document.getElementById('bufferSize').value = data.bufferSize;
+            document.getElementById('proxyTimeout').value = data.proxyTimeout;
+            document.getElementById('tcpFastOpen').checked = data.tcpFastOpen;
+            document.getElementById('tcpNodelay').checked = data.tcpNodelay;
+            document.getElementById('socketKeepalive').checked = data.socketKeepalive;
+            document.getElementById('ipv6').checked = data.ipv6;
+            document.getElementById('enableLogging').checked = data.enableLogging;
+            
+            toggleFields();
+        }
+
+        async function applyConfiguration() {
+            const payload = {
+                routingMode: document.getElementById('routingMode').value,
+                staticIp: document.getElementById('staticIp').value,
+                dnsMode: document.getElementById('dnsMode').value,
+                dohProvider: document.getElementById('dohProvider').value,
+                customDns: document.getElementById('customDns').value,
+                bufferSize: document.getElementById('bufferSize').value,
+                proxyTimeout: document.getElementById('proxyTimeout').value,
+                tcpFastOpen: document.getElementById('tcpFastOpen').checked,
+                tcpNodelay: document.getElementById('tcpNodelay').checked,
+                socketKeepalive: document.getElementById('socketKeepalive').checked,
+                ipv6: document.getElementById('ipv6').checked,
+                enableLogging: document.getElementById('enableLogging').checked
+            };
+
+            const statusLabel = document.getElementById('saveStatus');
+            statusLabel.innerText = "Menerapkan...";
+            statusLabel.style.color = "#f59e0b";
+
+            const res = await fetch('/api/apply', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (res.ok) {
+                statusLabel.innerText = "Aktif & Di-reload!";
+                statusLabel.style.color = "#22c55e";
+                setTimeout(() => statusLabel.innerText = "Ready", 3000);
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const res = await fetch('/api/status');
+                if (res.ok) {
+                    const text = await res.text();
+                    const activeMatch = text.match(/Active connections:\s+(\d+)/);
+                    const handledMatch = text.match(/\s+(\d+)\s+(\d+)\s+(\d+)/);
+                    if (activeMatch) document.getElementById('activeSocket').innerText = activeMatch[1];
+                    if (handledMatch) document.getElementById('totalReq').innerText = handledMatch[1];
+                }
+            } catch(e){}
+        }
+
+        loadSettings();
+        setInterval(updateStatus, 2000);
+    </script>
+</body>
+</html>
