@@ -10,18 +10,16 @@ const CONFIG_PATH = '/etc/nginx/nginx.conf';
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
-// Konfigurasi Lengkap
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
-    dnsMode: 'doh',        // 'standard', 'doh', 'custom'
+    dnsMode: 'standard', // Default disetel ke standard ultra-fast agar langsung konek
     customDns: '1.1.1.1 8.8.8.8',
-    dohProvider: 'cloudflare', // 'cloudflare', 'google', 'quad9'
+    dohProvider: 'cloudflare',
     ipv6: false,
     tcpNodelay: true,
     socketKeepalive: true,
-    tcpFastOpen: true,     // FITUR BARU: Fast Open 
-    quickAck: true,        // FITUR BARU: Quick ACK
+    tcpFastOpen: false, // Default dimatikan agar kompatibel dengan semua kernel
     bufferSize: '128k',
     connectTimeout: '2s',
     proxyTimeout: '5m',
@@ -31,11 +29,11 @@ let currentSettings = {
 function generateNginxConfig(s) {
     let resolverLine = '';
     if (s.dnsMode === 'doh') {
-        resolverLine = `resolver 127.0.0.1:5053 127.0.0.11 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else if (s.dnsMode === 'custom') {
-        resolverLine = `resolver ${s.customDns} 127.0.0.11 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver ${s.customDns} valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else {
-        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 127.0.0.11 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     }
 
     const proxyTarget = s.routingMode === 'static' 
@@ -48,7 +46,9 @@ function generateNginxConfig(s) {
 
     const fastOpenParam = s.tcpFastOpen ? 'fastopen=512' : '';
 
-    return `worker_processes auto;
+    return `load_module /usr/lib/nginx/modules/ngx_stream_module.so;
+
+worker_processes auto;
 worker_rlimit_nofile 65535;
 
 events {
@@ -79,7 +79,7 @@ stream {
 }
 
 http {
-    include mime.types;
+    include /etc/nginx/mime.types;
     default_type application/octet-stream;
     access_log off;
     error_log /dev/null crit;
@@ -102,31 +102,12 @@ http {
 `;
 }
 
-// Restart daemon DoH sesuai provider yang dipilih
-function updateDohDaemon(provider) {
-    let dohUrl = 'https://1.1.1.1/dns-query';
-    if (provider === 'google') dohUrl = 'https://dns.google/dns-query';
-    if (provider === 'quad9') dohUrl = 'https://dns.quad9.net/dns-query';
-
-    exec('pkill -f cloudflared', () => {
-        exec(`cloudflared proxy-dns --port 5053 --upstream ${dohUrl} &`, (err) => {
-            if (err) console.log('DoH reload notice:', err.message);
-        });
-    });
-}
-
 app.get('/api/settings', (req, res) => {
     res.json(currentSettings);
 });
 
 app.post('/api/apply', (req, res) => {
-    const prevDohProvider = currentSettings.dohProvider;
     currentSettings = { ...currentSettings, ...req.body };
-
-    if (currentSettings.dnsMode === 'doh' && currentSettings.dohProvider !== prevDohProvider) {
-        updateDohDaemon(currentSettings.dohProvider);
-    }
-
     const confContent = generateNginxConfig(currentSettings);
 
     fs.writeFile(CONFIG_PATH, confContent, (err) => {
@@ -162,10 +143,10 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Start awal
+// Jalankan Nginx saat container start
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
-    exec('nginx', () => {
-        updateDohDaemon(currentSettings.dohProvider);
+    exec('nginx', (err) => {
+        if (err) console.log('Nginx start notice:', err.message);
     });
 });
 
