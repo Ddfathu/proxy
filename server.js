@@ -12,15 +12,13 @@ app.use(express.static(path.join(__dirname)));
 
 let tunnelProcess = null;
 
+// Konfigurasi Default & State
 let currentSettings = {
-    // Cloudflare Zero Trust
-    enableZeroTrust: false,
-    zeroTrustToken: '',
-    // Routing & DoH
-    routingMode: 'edge_doh', // 'edge_doh', 'static', 'dynamic'
+    routingMode: 'dynamic',
     staticIp: '104.16.123.96',
-    dohProvider: 'custom',   // 'cloudflare', 'google', 'quad9', 'custom'
-    customDohUrl: 'https://1.1.1.1/dns-query',
+    dnsMode: 'standard',
+    customDns: '1.1.1.1 8.8.8.8',
+    dohProvider: 'cloudflare',
     ipv6: false,
     tcpNodelay: true,
     socketKeepalive: true,
@@ -28,23 +26,25 @@ let currentSettings = {
     bufferSize: '128k',
     connectTimeout: '2s',
     proxyTimeout: '5m',
-    enableLogging: false
+    enableLogging: false,
+    // Zero Trust Settings
+    enableZeroTrust: false,
+    zeroTrustToken: ''
 };
 
 function generateNginxConfig(s) {
     let resolverLine = '';
-    let proxyTarget = '';
-
-    if (s.routingMode === 'edge_doh') {
-        resolverLine = `resolver 127.0.0.1:5053 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
-        proxyTarget = `$ssl_preread_server_name:443`;
-    } else if (s.routingMode === 'static') {
-        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 valid=3600s ipv6=off;`;
-        proxyTarget = `${s.staticIp}:443`;
+    if (s.dnsMode === 'doh') {
+        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+    } else if (s.dnsMode === 'custom') {
+        resolverLine = `resolver ${s.customDns} valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else {
-        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 valid=3600s ipv6=off;`;
-        proxyTarget = `$ssl_preread_server_name:443`;
+        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     }
+
+    const proxyTarget = s.routingMode === 'static' 
+        ? `${s.staticIp}:443` 
+        : `$ssl_preread_server_name:443`;
 
     const logDirective = s.enableLogging 
         ? `log_format stream_monitor '$remote_addr [$time_local] Target: $ssl_preread_server_name Bytes: [RX: $bytes_received | TX: $bytes_sent] Duration: \${session_time}s Status: $status';\n    access_log /var/log/nginx/stream.log stream_monitor buffer=32k flush=3s;`
@@ -108,24 +108,12 @@ http {
 `;
 }
 
-function updateDohDaemon(provider, customUrl) {
-    let dohUrl = 'https://1.1.1.1/dns-query';
-    if (provider === 'google') dohUrl = 'https://dns.google/dns-query';
-    if (provider === 'quad9') dohUrl = 'https://dns.quad9.net/dns-query';
-    if (provider === 'custom' && customUrl && customUrl.trim() !== '') {
-        dohUrl = customUrl.trim();
-    }
-
-    exec('pkill -f "cloudflared proxy-dns"', () => {
-        exec(`/usr/local/bin/cloudflared proxy-dns --port 5053 --upstream ${dohUrl} &`, (err) => {
-            if (err) console.log('DoH Daemon reload notice:', err.message);
-        });
-    });
-}
-
+// Manager Zero Trust Cloudflare Tunnel
 function manageZeroTrust(enable, token) {
     if (tunnelProcess) {
-        try { process.kill(-tunnelProcess.pid); } catch (e) {
+        try {
+            process.kill(-tunnelProcess.pid);
+        } catch (e) {
             try { tunnelProcess.kill(); } catch (err) {}
         }
         tunnelProcess = null;
@@ -133,7 +121,7 @@ function manageZeroTrust(enable, token) {
 
     if (enable && token && token.trim() !== '') {
         console.log('Menjalankan Cloudflare Zero Trust Tunnel...');
-        tunnelProcess = spawn('/usr/local/bin/cloudflared', ['tunnel', '--no-autoupdate', 'run', '--token', token.trim()], {
+        tunnelProcess = spawn('cloudflared', ['tunnel', '--no-autoupdate', 'run', '--token', token.trim()], {
             detached: true,
             stdio: 'ignore'
         });
@@ -145,17 +133,12 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/apply', (req, res) => {
-    const prevDohProvider = currentSettings.dohProvider;
-    const prevCustomUrl = currentSettings.customDohUrl;
     const prevZeroTrustEnable = currentSettings.enableZeroTrust;
     const prevToken = currentSettings.zeroTrustToken;
 
     currentSettings = { ...currentSettings, ...req.body };
 
-    if (currentSettings.dohProvider !== prevDohProvider || currentSettings.customDohUrl !== prevCustomUrl) {
-        updateDohDaemon(currentSettings.dohProvider, currentSettings.customDohUrl);
-    }
-
+    // Update Tunnel Zero Trust jika ada perubahan toggle atau token
     if (currentSettings.enableZeroTrust !== prevZeroTrustEnable || currentSettings.zeroTrustToken !== prevToken) {
         manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
     }
@@ -197,14 +180,11 @@ app.get('/api/logs', async (req, res) => {
 
 // Start awal
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
-    exec('nginx', () => {
-        updateDohDaemon(currentSettings.dohProvider, currentSettings.customDohUrl);
-        if (currentSettings.enableZeroTrust && currentSettings.zeroTrustToken) {
-            manageZeroTrust(true, currentSettings.zeroTrustToken);
-        }
+    exec('nginx', (err) => {
+        if (err) console.log('Nginx init notice:', err.message);
     });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server running on port ${PORT}`);
+    console.log(`Control Panel Server berjalan di port ${PORT}`);
 });
