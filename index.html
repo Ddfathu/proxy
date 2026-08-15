@@ -13,11 +13,11 @@
         .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 20px; }
         .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 15px; text-align: center; }
         .stat-card h3 { margin: 0; font-size: 13px; color: #94a3b8; text-transform: uppercase; }
-        .stat-card .value { font-size: 28px; font-weight: bold; color: #22c55e; margin-top: 8px; }
+        .stat-card .value { font-size: 26px; font-weight: bold; color: #22c55e; margin-top: 8px; }
         .card { background: #1e293b; border: 1px solid #334155; border-radius: 10px; padding: 20px; margin-bottom: 20px; }
         .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
         .badge { background: #0284c7; padding: 4px 10px; border-radius: 20px; font-size: 12px; font-weight: 600; }
-        pre { background: #020617; border: 1px solid #1e293b; color: #4ade80; padding: 15px; border-radius: 8px; font-size: 12px; max-height: 350px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
+        pre { background: #020617; border: 1px solid #1e293b; color: #4ade80; padding: 15px; border-radius: 8px; font-size: 12px; max-height: 400px; overflow-y: auto; white-space: pre-wrap; word-break: break-all; }
         .pulse { display: inline-block; width: 10px; height: 10px; background-color: #22c55e; border-radius: 50%; box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); animation: pulse 1.5s infinite; margin-right: 6px; }
         @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); } 70% { box-shadow: 0 0 0 8px rgba(34, 197, 94, 0); } 100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); } }
     </style>
@@ -31,12 +31,12 @@
 
         <div class="stats-grid">
             <div class="stat-card">
-                <h3>Koneksi Aktif (Online)</h3>
-                <div class="value" id="activeConn">--</div>
+                <h3>Socket Terhubung</h3>
+                <div class="value" id="activeConn">0 Socket</div>
             </div>
             <div class="stat-card">
-                <h3>Total Sesi Terlayani</h3>
-                <div class="value" style="color: #38bdf8;" id="totalHandled">--</div>
+                <h3>Sesi Valid Terlayani</h3>
+                <div class="value" style="color: #38bdf8;" id="totalHandled">0</div>
             </div>
             <div class="stat-card">
                 <h3>Status Node</h3>
@@ -46,35 +46,46 @@
 
         <div class="card">
             <div class="card-header">
-                <strong>📡 Stream Traffic & Target Access History:</strong>
+                <strong>📡 Traffic Valid & Riwayat Akses Target (SNI):</strong>
                 <small style="color: #94a3b8;">Auto-refresh tiap 1 detik</small>
             </div>
-            <pre id="streamLogs">Mengambil data sesi stream...</pre>
+            <pre id="streamLogs">Menunggu traffic koneksi valid...</pre>
         </div>
     </div>
 
     <script>
         async function updateDashboard() {
             try {
+                // 1. Fetch & Filter Log Stream
+                const logRes = await fetch("/api/logs");
+                if (logRes.ok) {
+                    const logData = await logRes.text();
+                    const lines = logData.trim().split("\n").filter(l => l.trim());
+                    
+                    // Filter: Buang probe bot port scan yang tidak memiliki target SNI atau bernilai Status 500
+                    const realTraffic = lines.filter(line => {
+                        return !line.includes("Target: -") && !line.includes("Status: 500");
+                    });
+
+                    // Tampilkan 30 aktivitas valid terbaru (paling baru di atas)
+                    const recentValid = realTraffic.slice(-30).reverse();
+                    document.getElementById("streamLogs").innerText = recentValid.length > 0 
+                        ? recentValid.join("\n") 
+                        : "Menunggu koneksi valid (Target SNI terdeteksi)...";
+
+                    document.getElementById("totalHandled").innerText = realTraffic.length;
+                }
+
+                // 2. Fetch Status Socket Nginx
                 const statusRes = await fetch("/nginx_status");
                 if (statusRes.ok) {
                     const text = await statusRes.text();
                     const activeMatch = text.match(/Active connections:\s+(\d+)/);
-                    const handledMatch = text.match(/\s+(\d+)\s+(\d+)\s+(\d+)/);
-                    
                     if (activeMatch) {
-                        const active = Math.max(0, parseInt(activeMatch[1]) - 1);
-                        document.getElementById("activeConn").innerText = active + " User";
+                        // Mengurangi 1 untuk koneksi internal Web UI Dashboard
+                        const rawActive = Math.max(0, parseInt(activeMatch[1]) - 1);
+                        document.getElementById("activeConn").innerText = rawActive + " Socket";
                     }
-                    if (handledMatch) {
-                        document.getElementById("totalHandled").innerText = handledMatch[1];
-                    }
-                }
-
-                const logRes = await fetch("/api/logs");
-                if (logRes.ok) {
-                    const logData = await logRes.text();
-                    document.getElementById("streamLogs").innerText = logData || "Belum ada koneksi yang terselesaikan...";
                 }
             } catch (err) {
                 console.error("Fetch error:", err);
