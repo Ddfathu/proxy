@@ -21,7 +21,8 @@
         
         .form-group { margin-bottom: 12px; }
         label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #cbd5e1; }
-        select, input[type="text"] { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 13px; }
+        select, input[type="text"], textarea { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 13px; }
+        textarea { resize: vertical; min-height: 70px; }
         
         .toggle-group { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2d3748; }
         .toggle-label { font-size: 13px; color: #e2e8f0; }
@@ -56,6 +57,27 @@
             </div>
         </div>
 
+        <!-- FITUR BARU: CLOUDFLARE ZERO TRUST -->
+        <div class="panel" style="border: 1px solid #0284c7;">
+            <h3 style="color: #38bdf8;">🛡️ Cloudflare Zero Trust (Argo Tunnel)</h3>
+            
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    Aktifkan Cloudflare Tunnel
+                    <small>Hubungkan langsung domain pribadi via Zero Trust Token</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="enableZeroTrust" onchange="toggleZeroTrustField()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group" id="zeroTrustGroup" style="margin-top: 10px; display: none;">
+                <label>Cloudflare Tunnel Token</label>
+                <textarea id="zeroTrustToken" placeholder="Tempelkan token eyJh... yang Anda dapat dari Cloudflare Zero Trust Dashboard"></textarea>
+            </div>
+        </div>
+
         <div class="panel">
             <h3>⚙️ 1. Routing & DNS Tunneling</h3>
             
@@ -75,18 +97,9 @@
             <div class="form-group">
                 <label>DNS Engine Type</label>
                 <select id="dnsMode" onchange="toggleFields()">
-                    <option value="doh">DNS over HTTPS (DoH Local Daemon 127.0.0.1:5053)</option>
                     <option value="standard">Standard UDP/TCP (1.1.1.1 + Google)</option>
+                    <option value="doh">DNS over HTTPS (DoH Local Daemon)</option>
                     <option value="custom">Custom DNS Resolver</option>
-                </select>
-            </div>
-
-            <div class="form-group" id="dohGroup">
-                <label>Penyedia DoH (DNS over HTTPS)</label>
-                <select id="dohProvider">
-                    <option value="cloudflare">Cloudflare (https://1.1.1.1/dns-query)</option>
-                    <option value="google">Google DoH (https://dns.google/dns-query)</option>
-                    <option value="quad9">Quad9 Secure (https://dns.quad9.net/dns-query)</option>
                 </select>
             </div>
 
@@ -177,11 +190,15 @@
     </div>
 
     <script>
+        function toggleZeroTrustField() {
+            const isChecked = document.getElementById('enableZeroTrust').checked;
+            document.getElementById('zeroTrustGroup').style.display = isChecked ? 'block' : 'none';
+        }
+
         function toggleFields() {
             const rMode = document.getElementById('routingMode').value;
             const dMode = document.getElementById('dnsMode').value;
             document.getElementById('staticIpGroup').style.display = rMode === 'static' ? 'block' : 'none';
-            document.getElementById('dohGroup').style.display = dMode === 'doh' ? 'block' : 'none';
             document.getElementById('customDnsGroup').style.display = dMode === 'custom' ? 'block' : 'none';
         }
 
@@ -189,10 +206,11 @@
             const res = await fetch('/api/settings');
             const data = await res.json();
             
+            document.getElementById('enableZeroTrust').checked = data.enableZeroTrust || false;
+            document.getElementById('zeroTrustToken').value = data.zeroTrustToken || '';
             document.getElementById('routingMode').value = data.routingMode;
             document.getElementById('staticIp').value = data.staticIp;
             document.getElementById('dnsMode').value = data.dnsMode;
-            document.getElementById('dohProvider').value = data.dohProvider || 'cloudflare';
             document.getElementById('customDns').value = data.customDns;
             document.getElementById('bufferSize').value = data.bufferSize;
             document.getElementById('proxyTimeout').value = data.proxyTimeout;
@@ -202,15 +220,17 @@
             document.getElementById('ipv6').checked = data.ipv6;
             document.getElementById('enableLogging').checked = data.enableLogging;
             
+            toggleZeroTrustField();
             toggleFields();
         }
 
         async function applyConfiguration() {
             const payload = {
+                enableZeroTrust: document.getElementById('enableZeroTrust').checked,
+                zeroTrustToken: document.getElementById('zeroTrustToken').value,
                 routingMode: document.getElementById('routingMode').value,
                 staticIp: document.getElementById('staticIp').value,
                 dnsMode: document.getElementById('dnsMode').value,
-                dohProvider: document.getElementById('dohProvider').value,
                 customDns: document.getElementById('customDns').value,
                 bufferSize: document.getElementById('bufferSize').value,
                 proxyTimeout: document.getElementById('proxyTimeout').value,
