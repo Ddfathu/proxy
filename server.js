@@ -10,11 +10,17 @@ const CONFIG_PATH = '/etc/nginx/nginx.conf';
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+let tunnelProcess = null;
+
 let currentSettings = {
+    // Cloudflare Zero Trust
+    enableZeroTrust: false,
+    zeroTrustToken: '',
+    // Routing & DoH
     routingMode: 'edge_doh', // 'edge_doh', 'static', 'dynamic'
     staticIp: '104.16.123.96',
     dohProvider: 'custom',   // 'cloudflare', 'google', 'quad9', 'custom'
-    customDohUrl: 'https://1.1.1.1/dns-query', // URL DoH Railway pribadi Anda
+    customDohUrl: 'https://1.1.1.1/dns-query',
     ipv6: false,
     tcpNodelay: true,
     socketKeepalive: true,
@@ -30,7 +36,6 @@ function generateNginxConfig(s) {
     let proxyTarget = '';
 
     if (s.routingMode === 'edge_doh') {
-        // Menggunakan Local DoH Daemon di port 5053
         resolverLine = `resolver 127.0.0.1:5053 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
         proxyTarget = `$ssl_preread_server_name:443`;
     } else if (s.routingMode === 'static') {
@@ -103,7 +108,6 @@ http {
 `;
 }
 
-// Menjalankan/memperbarui upstream URL DoH Daemon
 function updateDohDaemon(provider, customUrl) {
     let dohUrl = 'https://1.1.1.1/dns-query';
     if (provider === 'google') dohUrl = 'https://dns.google/dns-query';
@@ -115,9 +119,25 @@ function updateDohDaemon(provider, customUrl) {
     exec('pkill -f "cloudflared proxy-dns"', () => {
         exec(`/usr/local/bin/cloudflared proxy-dns --port 5053 --upstream ${dohUrl} &`, (err) => {
             if (err) console.log('DoH Daemon reload notice:', err.message);
-            console.log(`DoH Engine aktif mengarah ke: ${dohUrl}`);
         });
     });
+}
+
+function manageZeroTrust(enable, token) {
+    if (tunnelProcess) {
+        try { process.kill(-tunnelProcess.pid); } catch (e) {
+            try { tunnelProcess.kill(); } catch (err) {}
+        }
+        tunnelProcess = null;
+    }
+
+    if (enable && token && token.trim() !== '') {
+        console.log('Menjalankan Cloudflare Zero Trust Tunnel...');
+        tunnelProcess = spawn('/usr/local/bin/cloudflared', ['tunnel', '--no-autoupdate', 'run', '--token', token.trim()], {
+            detached: true,
+            stdio: 'ignore'
+        });
+    }
 }
 
 app.get('/api/settings', (req, res) => {
@@ -127,12 +147,17 @@ app.get('/api/settings', (req, res) => {
 app.post('/api/apply', (req, res) => {
     const prevDohProvider = currentSettings.dohProvider;
     const prevCustomUrl = currentSettings.customDohUrl;
+    const prevZeroTrustEnable = currentSettings.enableZeroTrust;
+    const prevToken = currentSettings.zeroTrustToken;
 
     currentSettings = { ...currentSettings, ...req.body };
 
-    // Update daemon DoH jika ada perubahan provider atau perubahan URL custom
     if (currentSettings.dohProvider !== prevDohProvider || currentSettings.customDohUrl !== prevCustomUrl) {
         updateDohDaemon(currentSettings.dohProvider, currentSettings.customDohUrl);
+    }
+
+    if (currentSettings.enableZeroTrust !== prevZeroTrustEnable || currentSettings.zeroTrustToken !== prevToken) {
+        manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
     }
 
     const confContent = generateNginxConfig(currentSettings);
@@ -170,10 +195,13 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Jalankan Nginx & DoH saat start
+// Start awal
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', () => {
         updateDohDaemon(currentSettings.dohProvider, currentSettings.customDohUrl);
+        if (currentSettings.enableZeroTrust && currentSettings.zeroTrustToken) {
+            manageZeroTrust(true, currentSettings.zeroTrustToken);
+        }
     });
 });
 
