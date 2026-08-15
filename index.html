@@ -57,14 +57,14 @@
             </div>
         </div>
 
-        <!-- 🛡️ CLOUDFLARE ZERO TRUST (TUNNEL TOKEN) -->
+        <!-- FITUR BARU: CLOUDFLARE ZERO TRUST -->
         <div class="panel" style="border: 1px solid #0284c7;">
             <h3 style="color: #38bdf8;">🛡️ Cloudflare Zero Trust (Argo Tunnel)</h3>
             
             <div class="toggle-group">
                 <div class="toggle-label">
                     Aktifkan Cloudflare Tunnel
-                    <small>Hubungkan domain pribadi via Zero Trust Token</small>
+                    <small>Hubungkan langsung domain pribadi via Zero Trust Token</small>
                 </div>
                 <label class="switch">
                     <input type="checkbox" id="enableZeroTrust" onchange="toggleZeroTrustField()">
@@ -79,35 +79,33 @@
         </div>
 
         <div class="panel">
-            <h3>⚙️ 1. Routing & Cloudflare Edge Engine</h3>
+            <h3>⚙️ 1. Routing & DNS Tunneling</h3>
             
             <div class="form-group">
                 <label>Mode Routing Target</label>
                 <select id="routingMode" onchange="toggleFields()">
-                    <option value="edge_doh">🔥 Edge + Internal DoH (Auto Anti-1034 / Dark VPN Ready)</option>
-                    <option value="static">Static Upstream IP (Fixed Edge IP)</option>
-                    <option value="dynamic">Raw Dynamic SNI (Direct UDP Resolver)</option>
+                    <option value="dynamic">Dynamic SNI ($ssl_preread_server_name) - Full Host Support</option>
+                    <option value="static">Static Upstream IP (Direct Fast Handshake)</option>
                 </select>
             </div>
 
             <div class="form-group" id="staticIpGroup" style="display: none;">
-                <label>Target Static Edge IP</label>
+                <label>Target Upstream IP (Cloudflare Edge)</label>
                 <input type="text" id="staticIp" value="104.16.123.96">
             </div>
 
-            <div class="form-group" id="dohProviderGroup">
-                <label>Penyedia Server DoH Internal</label>
-                <select id="dohProvider" onchange="toggleDohCustomField()">
-                    <option value="custom">⚡ Custom DoH Server (DoH Railway Pribadi)</option>
-                    <option value="cloudflare">Cloudflare DoH (https://1.1.1.1/dns-query)</option>
-                    <option value="google">Google DoH (https://dns.google/dns-query)</option>
-                    <option value="quad9">Quad9 DoH (https://dns.quad9.net/dns-query)</option>
+            <div class="form-group">
+                <label>DNS Engine Type</label>
+                <select id="dnsMode" onchange="toggleFields()">
+                    <option value="standard">Standard UDP/TCP (1.1.1.1 + Google)</option>
+                    <option value="doh">DNS over HTTPS (DoH Local Daemon)</option>
+                    <option value="custom">Custom DNS Resolver</option>
                 </select>
             </div>
 
-            <div class="form-group" id="customDohUrlGroup">
-                <label>Custom DoH Endpoint URL (HTTPS)</label>
-                <input type="text" id="customDohUrl" placeholder="https://doh-anda.up.railway.app/dns-query">
+            <div class="form-group" id="customDnsGroup" style="display: none;">
+                <label>Custom DNS Server</label>
+                <input type="text" id="customDns" value="9.9.9.9 149.112.112.112">
             </div>
         </div>
 
@@ -143,6 +141,17 @@
                 </div>
                 <label class="switch">
                     <input type="checkbox" id="socketKeepalive">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    IPv6 Dual-Stack Resolver
+                    <small>Nyalakan hanya jika ISP memiliki rute IPv6 cepat</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="ipv6">
                     <span class="slider"></span>
                 </label>
             </div>
@@ -188,16 +197,9 @@
 
         function toggleFields() {
             const rMode = document.getElementById('routingMode').value;
+            const dMode = document.getElementById('dnsMode').value;
             document.getElementById('staticIpGroup').style.display = rMode === 'static' ? 'block' : 'none';
-            document.getElementById('dohProviderGroup').style.display = rMode === 'edge_doh' ? 'block' : 'none';
-            toggleDohCustomField();
-        }
-
-        function toggleDohCustomField() {
-            const rMode = document.getElementById('routingMode').value;
-            const provider = document.getElementById('dohProvider').value;
-            const customGroup = document.getElementById('customDohUrlGroup');
-            customGroup.style.display = (rMode === 'edge_doh' && provider === 'custom') ? 'block' : 'none';
+            document.getElementById('customDnsGroup').style.display = dMode === 'custom' ? 'block' : 'none';
         }
 
         async function loadSettings() {
@@ -206,16 +208,17 @@
             
             document.getElementById('enableZeroTrust').checked = data.enableZeroTrust || false;
             document.getElementById('zeroTrustToken').value = data.zeroTrustToken || '';
-            document.getElementById('routingMode').value = data.routingMode || 'edge_doh';
-            document.getElementById('staticIp').value = data.staticIp || '104.16.123.96';
-            document.getElementById('dohProvider').value = data.dohProvider || 'custom';
-            document.getElementById('customDohUrl').value = data.customDohUrl || 'https://1.1.1.1/dns-query';
-            document.getElementById('bufferSize').value = data.bufferSize || '128k';
-            document.getElementById('proxyTimeout').value = data.proxyTimeout || '5m';
-            document.getElementById('tcpFastOpen').checked = data.tcpFastOpen || false;
-            document.getElementById('tcpNodelay').checked = data.tcpNodelay !== false;
-            document.getElementById('socketKeepalive').checked = data.socketKeepalive !== false;
-            document.getElementById('enableLogging').checked = data.enableLogging || false;
+            document.getElementById('routingMode').value = data.routingMode;
+            document.getElementById('staticIp').value = data.staticIp;
+            document.getElementById('dnsMode').value = data.dnsMode;
+            document.getElementById('customDns').value = data.customDns;
+            document.getElementById('bufferSize').value = data.bufferSize;
+            document.getElementById('proxyTimeout').value = data.proxyTimeout;
+            document.getElementById('tcpFastOpen').checked = data.tcpFastOpen;
+            document.getElementById('tcpNodelay').checked = data.tcpNodelay;
+            document.getElementById('socketKeepalive').checked = data.socketKeepalive;
+            document.getElementById('ipv6').checked = data.ipv6;
+            document.getElementById('enableLogging').checked = data.enableLogging;
             
             toggleZeroTrustField();
             toggleFields();
@@ -227,13 +230,14 @@
                 zeroTrustToken: document.getElementById('zeroTrustToken').value,
                 routingMode: document.getElementById('routingMode').value,
                 staticIp: document.getElementById('staticIp').value,
-                dohProvider: document.getElementById('dohProvider').value,
-                customDohUrl: document.getElementById('customDohUrl').value,
+                dnsMode: document.getElementById('dnsMode').value,
+                customDns: document.getElementById('customDns').value,
                 bufferSize: document.getElementById('bufferSize').value,
                 proxyTimeout: document.getElementById('proxyTimeout').value,
                 tcpFastOpen: document.getElementById('tcpFastOpen').checked,
                 tcpNodelay: document.getElementById('tcpNodelay').checked,
                 socketKeepalive: document.getElementById('socketKeepalive').checked,
+                ipv6: document.getElementById('ipv6').checked,
                 enableLogging: document.getElementById('enableLogging').checked
             };
 
