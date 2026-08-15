@@ -1,4 +1,5 @@
 FROM nginx:alpine
 COPY nginx.conf /etc/nginx/nginx.conf
-EXPOSE 8080
+COPY index.html /usr/share/nginx/html/index.html
+EXPOSE 8080 80
 CMD ["nginx", "-g", "daemon off;"]
