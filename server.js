@@ -1,5 +1,5 @@
 const express = require('express');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
@@ -10,20 +10,26 @@ const CONFIG_PATH = '/etc/nginx/nginx.conf';
 app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
+let tunnelProcess = null;
+
+// Konfigurasi Default & State
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
-    dnsMode: 'standard', // Default disetel ke standard ultra-fast agar langsung konek
+    dnsMode: 'standard',
     customDns: '1.1.1.1 8.8.8.8',
     dohProvider: 'cloudflare',
     ipv6: false,
     tcpNodelay: true,
     socketKeepalive: true,
-    tcpFastOpen: false, // Default dimatikan agar kompatibel dengan semua kernel
+    tcpFastOpen: false,
     bufferSize: '128k',
     connectTimeout: '2s',
     proxyTimeout: '5m',
-    enableLogging: false
+    enableLogging: false,
+    // Zero Trust Settings
+    enableZeroTrust: false,
+    zeroTrustToken: ''
 };
 
 function generateNginxConfig(s) {
@@ -102,12 +108,41 @@ http {
 `;
 }
 
+// Manager Zero Trust Cloudflare Tunnel
+function manageZeroTrust(enable, token) {
+    if (tunnelProcess) {
+        try {
+            process.kill(-tunnelProcess.pid);
+        } catch (e) {
+            try { tunnelProcess.kill(); } catch (err) {}
+        }
+        tunnelProcess = null;
+    }
+
+    if (enable && token && token.trim() !== '') {
+        console.log('Menjalankan Cloudflare Zero Trust Tunnel...');
+        tunnelProcess = spawn('cloudflared', ['tunnel', '--no-autoupdate', 'run', '--token', token.trim()], {
+            detached: true,
+            stdio: 'ignore'
+        });
+    }
+}
+
 app.get('/api/settings', (req, res) => {
     res.json(currentSettings);
 });
 
 app.post('/api/apply', (req, res) => {
+    const prevZeroTrustEnable = currentSettings.enableZeroTrust;
+    const prevToken = currentSettings.zeroTrustToken;
+
     currentSettings = { ...currentSettings, ...req.body };
+
+    // Update Tunnel Zero Trust jika ada perubahan toggle atau token
+    if (currentSettings.enableZeroTrust !== prevZeroTrustEnable || currentSettings.zeroTrustToken !== prevToken) {
+        manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
+    }
+
     const confContent = generateNginxConfig(currentSettings);
 
     fs.writeFile(CONFIG_PATH, confContent, (err) => {
@@ -143,13 +178,13 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Jalankan Nginx saat container start
+// Start awal
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', (err) => {
-        if (err) console.log('Nginx start notice:', err.message);
+        if (err) console.log('Nginx init notice:', err.message);
     });
 });
 
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Server listening on port ${PORT}`);
+    console.log(`Control Panel Server berjalan di port ${PORT}`);
 });
