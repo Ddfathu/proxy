@@ -21,7 +21,8 @@
         
         .form-group { margin-bottom: 12px; }
         label { display: block; font-size: 12px; font-weight: 600; margin-bottom: 5px; color: #cbd5e1; }
-        select, input[type="text"] { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 13px; }
+        select, input[type="text"], textarea { width: 100%; padding: 8px 12px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; font-size: 13px; }
+        textarea { resize: vertical; min-height: 70px; }
         
         .toggle-group { display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #2d3748; }
         .toggle-label { font-size: 13px; color: #e2e8f0; }
@@ -53,6 +54,27 @@
             <div class="metric-card">
                 <h4>Total Handled</h4>
                 <div class="val" style="color: #38bdf8;" id="totalReq">0</div>
+            </div>
+        </div>
+
+        <!-- 🛡️ CLOUDFLARE ZERO TRUST (TUNNEL TOKEN) -->
+        <div class="panel" style="border: 1px solid #0284c7;">
+            <h3 style="color: #38bdf8;">🛡️ Cloudflare Zero Trust (Argo Tunnel)</h3>
+            
+            <div class="toggle-group">
+                <div class="toggle-label">
+                    Aktifkan Cloudflare Tunnel
+                    <small>Hubungkan domain pribadi via Zero Trust Token</small>
+                </div>
+                <label class="switch">
+                    <input type="checkbox" id="enableZeroTrust" onchange="toggleZeroTrustField()">
+                    <span class="slider"></span>
+                </label>
+            </div>
+
+            <div class="form-group" id="zeroTrustGroup" style="margin-top: 10px; display: none;">
+                <label>Cloudflare Tunnel Token</label>
+                <textarea id="zeroTrustToken" placeholder="Tempelkan token eyJh... yang Anda dapat dari Cloudflare Zero Trust Dashboard"></textarea>
             </div>
         </div>
 
@@ -159,6 +181,11 @@
     </div>
 
     <script>
+        function toggleZeroTrustField() {
+            const isChecked = document.getElementById('enableZeroTrust').checked;
+            document.getElementById('zeroTrustGroup').style.display = isChecked ? 'block' : 'none';
+        }
+
         function toggleFields() {
             const rMode = document.getElementById('routingMode').value;
             document.getElementById('staticIpGroup').style.display = rMode === 'static' ? 'block' : 'none';
@@ -177,6 +204,8 @@
             const res = await fetch('/api/settings');
             const data = await res.json();
             
+            document.getElementById('enableZeroTrust').checked = data.enableZeroTrust || false;
+            document.getElementById('zeroTrustToken').value = data.zeroTrustToken || '';
             document.getElementById('routingMode').value = data.routingMode || 'edge_doh';
             document.getElementById('staticIp').value = data.staticIp || '104.16.123.96';
             document.getElementById('dohProvider').value = data.dohProvider || 'custom';
@@ -188,11 +217,14 @@
             document.getElementById('socketKeepalive').checked = data.socketKeepalive !== false;
             document.getElementById('enableLogging').checked = data.enableLogging || false;
             
+            toggleZeroTrustField();
             toggleFields();
         }
 
         async function applyConfiguration() {
             const payload = {
+                enableZeroTrust: document.getElementById('enableZeroTrust').checked,
+                zeroTrustToken: document.getElementById('zeroTrustToken').value,
                 routingMode: document.getElementById('routingMode').value,
                 staticIp: document.getElementById('staticIp').value,
                 dohProvider: document.getElementById('dohProvider').value,
