@@ -11,23 +11,24 @@ app.use(express.json());
 app.use(express.static(path.join(__dirname)));
 
 let tunnelProcess = null;
+let dohProcess = null;
 
-// Konfigurasi Default & State
+// Konfigurasi Default Lengkap
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
     dnsMode: 'standard',
     customDns: '1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4',
     dohProvider: 'cloudflare',
+    customDohUrl: 'https://1.1.1.1/dns-query',
     ipv6: false,
     tcpNodelay: true,
     socketKeepalive: true,
     tcpFastOpen: false,
-    bufferSize: '128k',
+    bufferSize: '256k',
     connectTimeout: '2s',
-    proxyTimeout: '10m',
+    proxyTimeout: '30m',
     enableLogging: false,
-    // Zero Trust Settings
     enableZeroTrust: false,
     zeroTrustToken: ''
 };
@@ -35,10 +36,8 @@ let currentSettings = {
 function generateNginxConfig(s) {
     let resolverLine = '';
     if (s.dnsMode === 'doh') {
-        // Fallback otomatis ke Cloudflare & Google jika daemon DoH lokal belum aktif
-        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 8.8.8.8 valid=600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 8.8.8.8 valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else if (s.dnsMode === 'custom') {
-        // Validasi anti-kosong agar tidak memicu Nginx syntax error
         const dnsList = (s.customDns && s.customDns.trim()) ? s.customDns.trim() : '1.1.1.1 8.8.8.8';
         resolverLine = `resolver ${dnsList} valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else {
@@ -73,9 +72,9 @@ stream {
     ${logDirective}
     error_log /dev/null crit;
 
-    proxy_buffer_size ${s.bufferSize || '128k'};
+    proxy_buffer_size ${s.bufferSize || '256k'};
     proxy_connect_timeout ${s.connectTimeout || '2s'};
-    proxy_timeout ${s.proxyTimeout || '5m'};
+    proxy_timeout ${s.proxyTimeout || '30m'};
 
     server {
         listen 8080 reuseport backlog=4096 ${fastOpenParam};
@@ -111,19 +110,40 @@ http {
 `;
 }
 
-// Manager Zero Trust Cloudflare Tunnel
+// Handler DoH Local Daemon (Port 5053)
+function manageDoH(s) {
+    if (dohProcess) {
+        try { process.kill(-dohProcess.pid); } catch (e) {
+            try { dohProcess.kill(); } catch (err) {}
+        }
+        dohProcess = null;
+    }
+
+    if (s.dnsMode === 'doh') {
+        let upstream = 'https://1.1.1.1/dns-query';
+        if (s.dohProvider === 'quad9') upstream = 'https://dns.quad9.net/dns-query';
+        else if (s.dohProvider === 'google') upstream = 'https://dns.google/dns-query';
+        else if (s.dohProvider === 'custom' && s.customDohUrl) upstream = s.customDohUrl.trim();
+
+        console.log(`[DoH Engine] Aktif dengan upstream: ${upstream}`);
+        dohProcess = spawn('cloudflared', ['proxy-dns', '--port', '5053', '--upstream', upstream, '--no-autoupdate'], {
+            detached: true,
+            stdio: 'ignore'
+        });
+    }
+}
+
+// Handler Cloudflare Zero Trust Tunnel
 function manageZeroTrust(enable, token) {
     if (tunnelProcess) {
-        try {
-            process.kill(-tunnelProcess.pid);
-        } catch (e) {
+        try { process.kill(-tunnelProcess.pid); } catch (e) {
             try { tunnelProcess.kill(); } catch (err) {}
         }
         tunnelProcess = null;
     }
 
     if (enable && token && token.trim() !== '') {
-        console.log('Menjalankan Cloudflare Zero Trust Tunnel...');
+        console.log('[Zero Trust] Menjalankan Tunnel...');
         tunnelProcess = spawn('cloudflared', ['tunnel', '--no-autoupdate', 'run', '--token', token.trim()], {
             detached: true,
             stdio: 'ignore'
@@ -141,7 +161,8 @@ app.post('/api/apply', (req, res) => {
 
     currentSettings = { ...currentSettings, ...req.body };
 
-    // Update Tunnel Zero Trust jika ada perubahan toggle atau token
+    // Update Daemon Services
+    manageDoH(currentSettings);
     if (currentSettings.enableZeroTrust !== prevZeroTrustEnable || currentSettings.zeroTrustToken !== prevToken) {
         manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
     }
@@ -181,10 +202,12 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Start awal saat container boot
+// Boot Awal
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', (err) => {
         if (err) console.log('Nginx init notice:', err.message);
+        manageDoH(currentSettings);
+        manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
     });
 });
 
