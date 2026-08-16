@@ -35,15 +35,18 @@ let currentSettings = {
 function generateNginxConfig(s) {
     let resolverLine = '';
     if (s.dnsMode === 'doh') {
-        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        // Fallback otomatis ke Cloudflare & Google jika daemon DoH lokal belum aktif
+        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 8.8.8.8 valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else if (s.dnsMode === 'custom') {
-        resolverLine = `resolver ${s.customDns} valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        // Validasi anti-kosong agar tidak memicu Nginx syntax error
+        const dnsList = (s.customDns && s.customDns.trim()) ? s.customDns.trim() : '1.1.1.1 8.8.8.8';
+        resolverLine = `resolver ${dnsList} valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else {
-        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 valid=3600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver 1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4 valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     }
 
     const proxyTarget = s.routingMode === 'static' 
-        ? `${s.staticIp}:443` 
+        ? `${s.staticIp || '104.16.123.96'}:443` 
         : `$ssl_preread_server_name:443`;
 
     const logDirective = s.enableLogging 
@@ -70,9 +73,9 @@ stream {
     ${logDirective}
     error_log /dev/null crit;
 
-    proxy_buffer_size ${s.bufferSize};
-    proxy_connect_timeout ${s.connectTimeout};
-    proxy_timeout ${s.proxyTimeout};
+    proxy_buffer_size ${s.bufferSize || '128k'};
+    proxy_connect_timeout ${s.connectTimeout || '2s'};
+    proxy_timeout ${s.proxyTimeout || '5m'};
 
     server {
         listen 8080 reuseport backlog=4096 ${fastOpenParam};
@@ -178,7 +181,7 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Start awal
+// Start awal saat container boot
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', (err) => {
         if (err) console.log('Nginx init notice:', err.message);
