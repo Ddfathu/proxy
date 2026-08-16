@@ -17,7 +17,7 @@ let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
     dnsMode: 'standard',
-    customDns: '1.1.1.1 8.8.8.8',
+    customDns: '1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4',
     dohProvider: 'cloudflare',
     ipv6: false,
     tcpNodelay: true,
@@ -25,7 +25,7 @@ let currentSettings = {
     tcpFastOpen: false,
     bufferSize: '128k',
     connectTimeout: '2s',
-    proxyTimeout: '5m',
+    proxyTimeout: '10m',
     enableLogging: false,
     // Zero Trust Settings
     enableZeroTrust: false,
@@ -36,7 +36,7 @@ function generateNginxConfig(s) {
     let resolverLine = '';
     if (s.dnsMode === 'doh') {
         // Fallback otomatis ke Cloudflare & Google jika daemon DoH lokal belum aktif
-        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 8.8.8.8 valid=300s ipv6=${s.ipv6 ? 'on' : 'off'};`;
+        resolverLine = `resolver 127.0.0.1:5053 1.1.1.1 8.8.8.8 valid=600s ipv6=${s.ipv6 ? 'on' : 'off'};`;
     } else if (s.dnsMode === 'custom') {
         // Validasi anti-kosong agar tidak memicu Nginx syntax error
         const dnsList = (s.customDns && s.customDns.trim()) ? s.customDns.trim() : '1.1.1.1 8.8.8.8';
