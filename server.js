@@ -13,7 +13,7 @@ app.use(express.static(path.join(__dirname)));
 let tunnelProcess = null;
 let dohProcess = null;
 
-// Konfigurasi Default Lengkap
+// Konfigurasi Default Lengkap (IPv6 Default ON)
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
@@ -87,13 +87,12 @@ stream {
 }
 
 http {
-    include /etc/nginx/mime.types;
-    default_type application/octet-stream;
     access_log off;
     error_log /dev/null crit;
 
     server {
-        listen 8081;
+        listen 127.0.0.1:8081;
+        server_name 127.0.0.1 localhost;
 
         location /nginx_status {
             stub_status;
@@ -182,11 +181,27 @@ app.post('/api/apply', (req, res) => {
 app.get('/api/status', async (req, res) => {
     try {
         const fetch = (await import('node-fetch')).default;
-        const response = await fetch('http://127.0.0.1:8081/nginx_status');
-        const text = await response.text();
-        res.send(text);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 1500);
+
+        const response = await fetch('http://127.0.0.1:8081/nginx_status', { signal: controller.signal });
+        clearTimeout(timeout);
+
+        if (response.ok) {
+            const text = await response.text();
+            return res.send(text);
+        }
+        throw new Error('Endpoint HTTP stub_status belum aktif');
     } catch (e) {
-        res.status(500).send('Offline');
+        // Fallback: deteksi PID proses Nginx di sistem
+        exec('pgrep nginx', (err, stdout) => {
+            if (!err && stdout.trim()) {
+                const pids = stdout.trim().split('\n').join(', ');
+                res.send(`Active: Nginx Core Running (PID: ${pids})`);
+            } else {
+                res.status(500).send('Offline');
+            }
+        });
     }
 });
 
@@ -202,7 +217,7 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Boot Awal
+// Start Awal Container Boot
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', (err) => {
         if (err) console.log('Nginx init notice:', err.message);
