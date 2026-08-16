@@ -17,18 +17,18 @@ let dohProcess = null;
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
-    dnsMode: 'standard',
+    dnsMode: 'doh',
     customDns: '1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4',
     dohProvider: 'cloudflare',
     customDohUrl: 'https://1.1.1.1/dns-query',
-    ipv6: false,
+    ipv6: true,
     tcpNodelay: true,
     socketKeepalive: true,
-    tcpFastOpen: false,
+    tcpFastOpen: true,
     bufferSize: '256k',
     connectTimeout: '2s',
     proxyTimeout: '30m',
-    enableLogging: false,
+    enableLogging: true,
     enableZeroTrust: false,
     zeroTrustToken: ''
 };
