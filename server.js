@@ -2,6 +2,7 @@ const express = require('express');
 const { exec, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const dns = require('dns');
 
 const app = express();
 const PORT = 80;
@@ -13,11 +14,10 @@ app.use(express.static(path.join(__dirname)));
 let tunnelProcess = null;
 let dohProcess = null;
 
-// Konfigurasi Default Lengkap (IPv6 Default ON)
 let currentSettings = {
     routingMode: 'dynamic',
     staticIp: '104.16.123.96',
-    dnsMode: 'doh',
+    dnsMode: 'standard',
     customDns: '1.1.1.1 1.0.0.1 8.8.8.8 8.8.4.4',
     dohProvider: 'cloudflare',
     customDohUrl: 'https://1.1.1.1/dns-query',
@@ -28,7 +28,7 @@ let currentSettings = {
     bufferSize: '256k',
     connectTimeout: '2s',
     proxyTimeout: '30m',
-    enableLogging: true,
+    enableLogging: false,
     enableZeroTrust: false,
     zeroTrustToken: ''
 };
@@ -109,7 +109,6 @@ http {
 `;
 }
 
-// Handler DoH Local Daemon (Port 5053)
 function manageDoH(s) {
     if (dohProcess) {
         try { process.kill(-dohProcess.pid); } catch (e) {
@@ -132,7 +131,6 @@ function manageDoH(s) {
     }
 }
 
-// Handler Cloudflare Zero Trust Tunnel
 function manageZeroTrust(enable, token) {
     if (tunnelProcess) {
         try { process.kill(-tunnelProcess.pid); } catch (e) {
@@ -150,6 +148,40 @@ function manageZeroTrust(enable, token) {
     }
 }
 
+// Endpoint Ambil dan Resolve TCP Domain Railway
+app.get('/api/tcp-info', (req, res) => {
+    const domain = process.env.RAILWAY_TCP_PROXY_DOMAIN;
+    const port = process.env.RAILWAY_TCP_PROXY_PORT;
+
+    if (!domain || !port) {
+        return res.json({
+            available: false,
+            message: 'TCP Proxy belum diaktifkan di Settings Networking Railway'
+        });
+    }
+
+    dns.lookup(domain, { family: 4 }, (err, address) => {
+        if (err) {
+            return res.json({
+                available: true,
+                domain: domain,
+                port: port,
+                ip: 'Gagal resolve IP',
+                endpoint: `${domain}:${port}`
+            });
+        }
+
+        res.json({
+            available: true,
+            domain: domain,
+            port: port,
+            ip: address,
+            endpoint: `${address}:${port}`,
+            domainEndpoint: `${domain}:${port}`
+        });
+    });
+});
+
 app.get('/api/settings', (req, res) => {
     res.json(currentSettings);
 });
@@ -160,7 +192,6 @@ app.post('/api/apply', (req, res) => {
 
     currentSettings = { ...currentSettings, ...req.body };
 
-    // Update Daemon Services
     manageDoH(currentSettings);
     if (currentSettings.enableZeroTrust !== prevZeroTrustEnable || currentSettings.zeroTrustToken !== prevToken) {
         manageZeroTrust(currentSettings.enableZeroTrust, currentSettings.zeroTrustToken);
@@ -191,9 +222,8 @@ app.get('/api/status', async (req, res) => {
             const text = await response.text();
             return res.send(text);
         }
-        throw new Error('Endpoint HTTP stub_status belum aktif');
+        throw new Error('Endpoint stub_status non-200');
     } catch (e) {
-        // Fallback: deteksi PID proses Nginx di sistem
         exec('pgrep nginx', (err, stdout) => {
             if (!err && stdout.trim()) {
                 const pids = stdout.trim().split('\n').join(', ');
@@ -217,7 +247,7 @@ app.get('/api/logs', async (req, res) => {
     }
 });
 
-// Start Awal Container Boot
+// Boot awal
 fs.writeFile(CONFIG_PATH, generateNginxConfig(currentSettings), () => {
     exec('nginx', (err) => {
         if (err) console.log('Nginx init notice:', err.message);
