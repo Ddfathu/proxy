@@ -27,13 +27,35 @@
         input:checked + .slider:before { transform: translateX(22px); background-color: #000000; }
         .btn-submit { width: 100%; background: #ffffff; color: #000000; border: none; padding: 12px; font-size: 13px; font-weight: 700; border-radius: 6px; cursor: pointer; text-transform: uppercase; letter-spacing: 0.5px; margin-top: 6px; }
         .btn-submit:active { opacity: 0.8; }
+        .btn-copy { background: #1a1a1a; color: #ffffff; border: 1px solid #333333; padding: 6px 12px; border-radius: 4px; font-size: 11px; cursor: pointer; }
+        .btn-copy:active { background: #333333; }
         .hidden { display: none; }
+        .tcp-box { display: flex; justify-content: space-between; align-items: center; background: #000000; border: 1px solid #333333; padding: 10px; border-radius: 6px; margin-top: 6px; }
+        .tcp-val { font-family: monospace; font-size: 13px; color: #ffffff; font-weight: bold; }
         pre { background: #000000; border: 1px solid #222222; padding: 10px; border-radius: 6px; font-size: 11px; color: #888888; overflow-x: auto; max-height: 120px; }
     </style>
 </head>
 <body>
 
 <div class="container">
+    <!-- Panel TCP Endpoint Info -->
+    <div class="card">
+        <div class="card-header">Railway TCP Endpoint</div>
+        <label>IP:PORT Upstream (Siap Pakai)</label>
+        <div class="tcp-box">
+            <span class="tcp-val" id="resolvedIpPort">Memuat...</span>
+            <button class="btn-copy" onclick="copyToClipboard('resolvedIpPort')">COPY</button>
+        </div>
+        <div style="margin-top: 8px;">
+            <label>Domain:PORT Asli</label>
+            <div class="tcp-box">
+                <span class="tcp-val" id="rawDomainPort" style="color: #888888; font-size: 11px;">Memuat...</span>
+                <button class="btn-copy" onclick="copyToClipboard('rawDomainPort')">COPY</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel Nginx Routing -->
     <div class="card">
         <div class="card-header">Nginx Core Engine</div>
         <div class="form-group">
@@ -74,6 +96,7 @@
         </div>
     </div>
 
+    <!-- Panel Kernel Acceleration -->
     <div class="card">
         <div class="card-header">Kernel & Socket Acceleration</div>
         <div class="toggle-row">
@@ -113,6 +136,7 @@
         </div>
     </div>
 
+    <!-- Panel Cloudflare Tunnel -->
     <div class="card">
         <div class="card-header">Cloudflare Zero Trust</div>
         <div class="toggle-row" style="margin-bottom: 8px;">
@@ -128,6 +152,7 @@
         </div>
     </div>
 
+    <!-- Panel Advanced Tuning -->
     <div class="card">
         <div class="card-header">Advanced Tuning</div>
         <div class="form-group">
@@ -149,6 +174,7 @@
         </div>
     </div>
 
+    <!-- Status Nginx -->
     <div class="card">
         <div class="card-header">Nginx Core Status</div>
         <pre id="statusBox">Memuat telemetry...</pre>
@@ -196,6 +222,22 @@
         }
     }
 
+    async function fetchTcpInfo() {
+        try {
+            const res = await fetch('/api/tcp-info');
+            const data = await res.json();
+            if (data.available && data.endpoint) {
+                document.getElementById('resolvedIpPort').innerText = data.endpoint;
+                document.getElementById('rawDomainPort').innerText = data.domainEndpoint;
+            } else {
+                document.getElementById('resolvedIpPort').innerText = 'Tidak Aktif';
+                document.getElementById('rawDomainPort').innerText = 'TCP Port belum ditambah di Railway';
+            }
+        } catch (e) {
+            document.getElementById('resolvedIpPort').innerText = 'Gagal memuat';
+        }
+    }
+
     async function applySettings() {
         const payload = {
             routingMode: document.getElementById('routingMode').value,
@@ -232,7 +274,16 @@
         } catch(e) {}
     }
 
+    function copyToClipboard(elementId) {
+        const text = document.getElementById(elementId).innerText;
+        if (text && text !== 'Memuat...' && text !== 'Tidak Aktif') {
+            navigator.clipboard.writeText(text);
+            alert('Tersalin: ' + text);
+        }
+    }
+
     loadSettings();
+    fetchTcpInfo();
     setInterval(fetchStatus, 3000);
 </script>
 </body>
